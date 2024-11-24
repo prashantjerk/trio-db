@@ -38,14 +38,141 @@ def login(cnx):
             print(f"Address: {result['street']}")
             print(f"City: {result['city']}, {result['country']}")
             print(f"Zip Code: {result['zipCode']}")
-            return result
+
+                    #ask the logged in user if they want to start the purchase or see the history
+            print("Type 1 if you want to buy some items.")
+            print("Type 2 if you want to see the bill history.")
+        
+            while True:
+                request = input("Type here: ")
+                if not request:
+                    print("Input cannot be empty.")
+                    continue
+                elif request == '1':
+                    purchase(cnx, result['customer_Id'])
+                    return None
+                elif request == '2':
+                    recent_bills(cnx, result['customer_Id'])
+                    return None
+                else:
+                    print("Invalid input. The input should be either '1' or '2'")
         else:
             print("Invalid credentials. Please check your username and password.")
-            return None
-
+        
     except pymysql.Error as e:
         print(f"Database error: {e}")
         return None
+    finally:
+        cursor.close()
+
+def purchase(cnx, customer_id):
+    cursor = cnx.cursor(pymysql.cursors.DictCursor)
+    print("\n---- Purchase Items ----")
+    cart = []
+
+    try:
+        # Start a transaction
+        cnx.begin()
+
+        while True:
+            item_name = input("Enter the name of the item you want to buy (or type 'done' to finish): ").strip()
+            if item_name.lower() == 'done':
+                break
+
+            quantity = input(f"Enter the quantity for '{item_name}': ").strip()
+            if not quantity.isdigit() or int(quantity) <= 0:
+                print("Invalid quantity. Please enter a positive number.")
+                continue
+
+            # Check if the item is available in stock
+            check_item_query = "SELECT item_Id, price, quantity FROM Item WHERE name = %s"
+            cursor.execute(check_item_query, (item_name,))
+            item = cursor.fetchone()
+
+            if not item:
+                print(f"'{item_name}' is not available in stock.")
+            elif int(quantity) > item['quantity']:
+                print(f"Only {item['quantity']} units of '{item_name}' are available.")
+            else:
+                # Add the item to the cart
+                cart.append((item['item_Id'], item_name, int(quantity), item['price']))
+                print(f"Added {quantity} units of '{item_name}' to your cart.")
+
+        # If the cart is empty, exit
+        if not cart:
+            print("Your cart is empty. No items purchased.")
+            cnx.rollback()
+            return
+
+        # Calculate the total amount
+        total_amount = sum(item[2] * item[3] for item in cart)
+        print(f"\nYour total amount is: ${total_amount:.2f}")
+
+        # Check user's balance
+        balance_query = "SELECT balance FROM BankInfo WHERE customer_Id = %s"
+        cursor.execute(balance_query, (customer_id,))
+        balance_result = cursor.fetchone()
+
+        if balance_result and balance_result['balance'] >= total_amount:
+            # Deduct the total amount from the user's balance
+            update_balance_query = "UPDATE BankInfo SET balance = balance - %s WHERE customer_Id = %s"
+            cursor.execute(update_balance_query, (total_amount, customer_id))
+
+            # Insert the transaction into the Bill table
+            insert_bill_query = "INSERT INTO Bill (customer_Id, totalAmount) VALUES (%s, %s)"
+            cursor.execute(insert_bill_query, (customer_id, total_amount))
+            bill_id = cursor.lastrowid
+
+            # Insert each item into the BillItems table
+            for item_id, item_name, qty, price in cart:
+                insert_bill_item_query = """
+                    INSERT INTO BillItems (bill_Id, item_Id, quantity, priceAfterDiscount)
+                    VALUES (%s, %s, %s, %s)
+                """
+                cursor.execute(insert_bill_item_query, (bill_id, item_id, qty, price * qty))
+
+            # Update the stock for the purchased items
+            for item_id, item_name, qty, price in cart:
+                update_stock_query = "UPDATE Item SET quantity = quantity - %s WHERE item_Id = %s"
+                cursor.execute(update_stock_query, (qty, item_id))
+
+            # Commit the transaction
+            cnx.commit()
+            print("\nPurchase successful! Thank you for shopping.")
+        else:
+            print("\nInsufficient balance. Please add more funds to your account.")
+            cnx.rollback()
+    except pymysql.Error as e:
+        # Rollback the transaction in case of any error
+        cnx.rollback()
+        print(f"Database error: {e}")
+    finally:
+        cursor.close()
+
+def recent_bills(cnx, customer_id):
+    cursor = cnx.cursor(pymysql.cursors.DictCursor)
+    print("\n----------- Recent Bills -----------")
+
+    try:
+        # Query to fetch the last 5 bills of the customer
+        bills_query = """
+        SELECT bill_id, totalAmount
+        FROM Bill
+        WHERE customer_Id = %s
+        ORDER BY bill_Id
+        LIMIT 5
+        """
+        cursor.execute(bills_query, (customer_id,))
+        bills = cursor.fetchall()
+
+        if bills:
+            print("\nYour last 5 bills:")
+            for bill in bills:
+                print(f"Bill ID: {bill['bill_id']}, Total Amount: ${bill['totalAmount']}")
+        else:
+            print("\nNo bill history found. No purchase made yet.")
+    except pymysql.Error as e:
+        print(f"Database error: {e}")
     finally:
         cursor.close()
 
@@ -195,14 +322,13 @@ def customer_interface(cnx):
     print("Are you a returning user? (yes/no)")
     user_input = input("Type here: ").lower()
 
+    # ask users if they are new or returning
     if user_input == "yes":
-        return login(cnx)
+        login(cnx)
     elif user_input == "no":
         register(cnx)
-        return None
     else:
         print("Invalid Input")
-        return None
 
 
 def manager_interface(cnx):
