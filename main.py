@@ -330,42 +330,102 @@ def customer_interface(cnx):
     else:
         print("Invalid Input")
 
+import pymysql
+
+def view_recent_bills(cnx):
+    cursor = cnx.cursor(pymysql.cursors.DictCursor)
+    try:
+        print("\n--- Last 5 Bills ---")
+        query = """
+            SELECT Bill.bill_Id, Customer.fName, Customer.lName, Bill.totalAmount
+            FROM Bill
+            JOIN Customer ON Bill.customer_Id = Customer.customer_Id
+            ORDER BY Bill.bill_Id DESC
+            LIMIT 5;
+        """
+        cursor.execute(query)
+        bills = cursor.fetchall()
+
+        if bills:
+            print("\n" + "-" * 50)
+            print(f"{'Bill ID':<10} {'Customer Name':<30} {'Total Amount':>10}")
+            print("-" * 50)
+            for bill in bills:
+                customer_name = f"{bill['fName']} {bill['lName']}"
+                print(f"{bill['bill_Id']:<10} {customer_name:<30} ${bill['totalAmount']:>10.2f}")
+            print("-" * 50)
+        else:
+            print("\nNo bills found.")
+    except pymysql.Error as e:
+        print(f"Database error: {e}")
+    finally:
+        cursor.close()
+
+
+def view_average_purchases(cnx):
+    cursor = cnx.cursor(pymysql.cursors.DictCursor)
+    try:
+        query = "SELECT AVG(totalAmount) AS average_purchase FROM Bill"
+        cursor.execute(query)
+        result = cursor.fetchone()
+
+        if result and result['average_purchase']:
+            print(f"\n---- Average Purchase ----")
+            print(f"The average purchase amount is: ${result['average_purchase']:.2f}")
+        else:
+            print("No purchase data available.")
+    except pymysql.Error as e:
+        print(f"Database error: {e}")
+    finally:
+        cursor.close()
 
 def manager_interface(cnx):
+    """Main manager interface."""
     cursor = cnx.cursor(pymysql.cursors.DictCursor)
     print("----------- Manager Interface -----------")
     print("----------- Login Now -----------")
-    
+
     create_manager = """
                 INSERT INTO Manager () VALUES ()
                 """
-    
-    cursor.execute(create_manager)
     
     username = input("Username: ").strip()
     password = input("Password: ").strip()
 
     try:
         login_query = """
-                    SELECT managerId, username
-                    FROM Manager 
-                    WHERE username = %s AND password = %s
-                    """
+            SELECT managerId, username
+            FROM Manager 
+            WHERE username = %s AND password = %s
+        """
         cursor.execute(login_query, (username, password))
         result = cursor.fetchone()
 
         if result:
             print(f"\nLogin successful! Welcome, {result['username']}!")
-            return result
+            while True:
+                print("\nWhat would you like to do?")
+                print("1: See the current bills (last 5 bills)")
+                print("2: See the average purchases")
+                print("3: Logout")
+
+                choice = input("Enter your choice: ").strip()
+                if choice == "1":
+                    view_last_5_bills(cnx)
+                elif choice == "2":
+                    view_average_purchases(cnx)
+                elif choice == "3":
+                    print("Logging out...")
+                    break
+                else:
+                    print("Invalid choice. Please select a valid option.")
         else:
             print("Invalid manager credentials.")
-            return None
-
     except pymysql.Error as e:
         print(f"Database error: {e}")
-        return None
     finally:
         cursor.close()
+
 
 def main():
     cnx = connect_to_database()
@@ -382,15 +442,11 @@ def main():
             user_type = input("Type here (C/M/E): ").upper()
 
             if user_type == "C":
-                result = customer_interface(cnx)
-                if result:
-                    # Add customer menu options here
-                    break
+                customer_interface(cnx)
+                break
             elif user_type == "M":
-                result = manager_interface(cnx)
-                if result:
-                    # Add manager menu options here
-                    break
+                manager_interface(cnx)
+                break
             elif user_type == "E":
                 print("Thank you for using our system. Goodbye!")
                 break
