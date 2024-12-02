@@ -2,7 +2,7 @@ CREATE DATABASE Opurchase;
 use Opurchase;
 SET FOREIGN_KEY_CHECKS = 1;
 
--- drop database Opurchase;
+ -- drop database Opurchase;
 CREATE TABLE Customer (
     customer_Id INT AUTO_INCREMENT PRIMARY KEY,
     fName VARCHAR(50),
@@ -21,6 +21,7 @@ CREATE TABLE BankInfo (
     customer_Id INT,
     bankName VARCHAR(100),
     accountNb VARCHAR(50),
+    balance DECIMAL(10, 2),
     FOREIGN KEY (customer_Id) REFERENCES Customer(customer_Id)
 );
 
@@ -32,8 +33,9 @@ CREATE TABLE Supplier (
 
 CREATE TABLE Item (
     item_Id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100),
-    price DECIMAL(10, 2),
+    name VARCHAR(100) NOT NULL,
+    price DECIMAL(10, 2) NOT NULL,
+    quantity INT NOT NULL,
     supplier_Id INT,
     FOREIGN KEY (supplier_Id) REFERENCES Supplier(supplier_Id)
 );
@@ -78,3 +80,33 @@ CREATE TABLE Manager (
     username VARCHAR(50) UNIQUE NOT NULL DEFAULT 'admin',
     password VARCHAR(255) NOT NULL DEFAULT 'admin'
 );
+
+
+-- trigger -- NO 5
+DELIMITER $$
+
+CREATE TRIGGER ApplyDiscountOnBill
+AFTER INSERT ON Bill
+FOR EACH ROW
+BEGIN
+    DECLARE applicableDiscount DECIMAL(5, 2);
+
+    -- Retrieve the applicable discount value from the Discount table
+    SELECT discountValue
+    INTO applicableDiscount
+    FROM Discount
+    WHERE NEW.totalAmount > minPrice
+      AND (maxPrice IS NULL OR NEW.totalAmount <= maxPrice)
+    ORDER BY minPrice DESC
+    LIMIT 1;
+
+    -- Apply the discount to the totalAmount if an applicable discount is found
+    IF applicableDiscount IS NOT NULL THEN
+        UPDATE Bill
+        SET totalAmount = NEW.totalAmount * (1 - applicableDiscount)
+        WHERE bill_Id = NEW.bill_Id;
+    END IF;
+END$$
+
+DELIMITER ;
+
