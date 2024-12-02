@@ -319,20 +319,21 @@ def register(cnx):
    
 
 def customer_interface(cnx):
-    print("Are you a returning user? (yes/no)")
-    user_input = input("Type here: ").lower()
+    while True:
+        print("Are you a returning user? (yes/no)")
+        user_input = input("Type here: ").lower()
 
-    # ask users if they are new or returning
-    if user_input == "yes":
-        login(cnx)
-    elif user_input == "no":
-        register(cnx)
-    else:
-        print("Invalid Input")
+        # ask users if they are new or returning
+        if user_input == "yes":
+            login(cnx)
+        elif user_input == "no":
+            register(cnx)
+        else:
+            print("Invalid Input")
 
 import pymysql
 
-def view_recent_bills(cnx):
+def view_last_5_bills(cnx):
     cursor = cnx.cursor(pymysql.cursors.DictCursor)
     try:
         print("\n--- Last 5 Bills ---")
@@ -388,6 +389,8 @@ def manager_interface(cnx):
     create_manager = """
                 INSERT INTO Manager () VALUES ()
                 """
+
+    cursor.execute(create_manager)
     
     username = input("Username: ").strip()
     password = input("Password: ").strip()
